@@ -1,6 +1,10 @@
 {
   "expo": {
     "name": "audio-record",
-    "slug": "audio-record"
+    "slug": "audio-record",
+    "scheme": "audio-record",
+    "plugins": [
+      "expo-router"
+    ]
   }
 }
