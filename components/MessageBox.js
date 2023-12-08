@@ -3,7 +3,7 @@ import * as React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Audio } from 'expo-av';
 import { FontAwesome } from '@expo/vector-icons';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, withDelay, cancelAnimation } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, cancelAnimation, Easing, useDerivedValue, useAnimatedReaction, runOnUI, runOnJS } from 'react-native-reanimated';
 import {
   Gesture,
   GestureDetector,
@@ -11,7 +11,7 @@ import {
 } from 'react-native-gesture-handler';
 
 const AnimatedBar = React.forwardRef((_, ref) => {
-  const animatedValue = useSharedValue(0);
+  const animatedValue = useSharedValue(10);
   const animatedStyle = useAnimatedStyle(() => {
     return {
       height: animatedValue.value,
@@ -22,6 +22,7 @@ const AnimatedBar = React.forwardRef((_, ref) => {
     };
   });
   React.useEffect(() => {
+    console.log(ref.current.length)
     ref.current.push(animatedValue);
   }, []);
 
@@ -29,27 +30,68 @@ const AnimatedBar = React.forwardRef((_, ref) => {
     <Animated.View style={animatedStyle}/>
   );
 });
-const MAX_BARS = 100; // Maximum number of bars in the graph
-// 1 px for 50 millisec, 1 bar for 250 millisec, 1 bar for 5 px
+const MILLISECOND_PER_BAR = 250;
+const PIXEL_PER_BAR = 5;
+const MAX_RECORD_MILLISECOND = 60000;
+const MAX_TOTAL_RECORD_WIDTH = MAX_RECORD_MILLISECOND / 250 * 5; // 1 min
+
+const RecordingBarsAnimationController = ({barsArrayRef, paddingLeft}) => {
+  useAnimatedReaction(() => paddingLeft.value, (curr, prev) => {
+    if (curr !== prev) {
+      const temp = barsArrayRef.current[0].value;
+      for (let i = 0; i < barsArrayRef.current.length - 1; i++) {
+        barsArrayRef.current[i].value = barsArrayRef.current[i+1].value;
+      }
+      barsArrayRef.current[barsArrayRef.current.length - 1].value = temp;
+    }
+  });
+
+  return <View />
+};
 export default function MessageBox({style}) {
-  const [animatedViewArray,_] = React.useState(Array(MAX_BARS).fill(0));
-  const animatedDataRef = React.useRef([]);
+  const [maxBars, setMaxBars] = React.useState(0);
+  const recordingBarAnimatedArray = React.useRef([]);
   const [recording, setRecording] = React.useState();
   const recordInitAnimationScale = useSharedValue(0);
+  const recordingWindowWidth = useSharedValue(0);
+  const recordingTotalWidth = useSharedValue(0);
   const recordButtonPressed = useSharedValue(false);
   const recordPanX = useSharedValue(0);
   const trashAnimatedStyle = useAnimatedStyle(() => ({transform: [{ scale: recordInitAnimationScale.value }]}));
   const [containerWidth, setContainerWidth] = React.useState(0);
   const recordContainerAnimatedStyle = useAnimatedStyle(() => ({height: 40 + recordInitAnimationScale.value * 10, left: 5 - recordInitAnimationScale.value * 5, width : 40 + (containerWidth - 40) * recordInitAnimationScale.value}), [containerWidth])
   const tempRef = React.useRef(null);
-  const realtimeRecordContainerStyle = useAnimatedStyle(() => ({
-    position: 'absolute',
-    left: 48,
-    top: 0,
+  const cameraButtonStyle = useAnimatedStyle(() => ({opacity: recordButtonPressed.value ? 0 : 1}));
+  const recordingBarsContainerPaddingLeft = useSharedValue(0);
+  const recordingBarsContainerStyle = useAnimatedStyle(() => ({
     flexDirection: 'row',
     alignItems: 'center',
     height: 50,
-  }))
+    width: recordingTotalWidth.value,
+    paddingLeft: recordingBarsContainerPaddingLeft.value,
+    overflow: 'hidden',
+  }));
+  const recordingBarsWindowStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    left: 48,
+    top: 0,
+    height: 50,
+    width: recordingWindowWidth.value,
+    flexDirection: 'row-reverse',
+    overflow: 'hidden'
+  }));
+  useDerivedValue(() => {
+    'worklet';
+    if (recordingWindowWidth.value < recordingTotalWidth.value) {
+      const delta = recordingTotalWidth.value - recordingWindowWidth.value;
+      if (delta > PIXEL_PER_BAR) {
+        const expectedPadding = Math.floor(delta / PIXEL_PER_BAR) * PIXEL_PER_BAR;
+        if (expectedPadding != recordingBarsContainerPaddingLeft.value) {
+          recordingBarsContainerPaddingLeft.value = expectedPadding;
+        }
+      }
+    }
+  }, [])
   const recordLockContainerStyle = useAnimatedStyle(() => ({
     top: -(recordInitAnimationScale.value * 130),
     display: recordInitAnimationScale.value ? 'flex' : "none",
@@ -79,24 +121,26 @@ export default function MessageBox({style}) {
   }))
   const containerLayoutCallback = React.useCallback((e) => {
     setContainerWidth(e.nativeEvent.layout.width);
+    const maxBars = Math.floor((e.nativeEvent.layout.width - 55) / (PIXEL_PER_BAR * 4));
+    setMaxBars(maxBars);
   }, []);
   const onRecordingStatusUpdate = React.useCallback((status) => { 
     // console.log(status.metering)
   },[]);
-  const currentAudioDataIndex = useSharedValue(0);
   const startRecordingCallback = React.useCallback(async (event) => {
     recordInitAnimationScale.value = withTiming(1, {duration: 300});
-    recordPanX.value = event.absoluteX;
-    recordButtonPressed.value = true;
-    const timeoutHandler = setTimeout(() => {
-      'worklet';
-      clearTimeout(timeoutHandler);
-      currentAudioDataIndex.value = withTiming(500, {duration: 25000});
+    setTimeout(() => {
+      recordingWindowWidth.value = withTiming(maxBars * PIXEL_PER_BAR, {duration: maxBars * MILLISECOND_PER_BAR, easing: Easing.linear});
+      recordingTotalWidth.value = withTiming(MAX_TOTAL_RECORD_WIDTH, {duration: MAX_RECORD_MILLISECOND, easing: Easing.linear});
       tempRef.current = setInterval(() => {
         'worklet';
-        animatedDataRef.current[Math.floor(currentAudioDataIndex.value / 4)].value = withTiming(Math.floor(Math.random() * 45) + 3, {duration: 150});
-      }, 250)
+        let currentIndex = Math.floor(recordingTotalWidth.value / PIXEL_PER_BAR);
+        if (currentIndex > (maxBars + 1)) currentIndex = maxBars + 1;
+        recordingBarAnimatedArray.current[currentIndex].value = withTiming(Math.floor(Math.random() * 45) + 3, {duration: 150});
+      }, 250);
     }, 300)
+    recordPanX.value = event.absoluteX;
+    recordButtonPressed.value = true;
     // setTimeout(async () => {
     //   try {
     //     console.log('Requesting permissions..');
@@ -120,11 +164,11 @@ export default function MessageBox({style}) {
     //     recordButtonPressed.value = false;
     //   }  
     // }, 300)
-  }, [onRecordingStatusUpdate]);
+  }, [onRecordingStatusUpdate, maxBars]);
   const stopRecordingCallback = React.useCallback(async () => {
-    console.log("stopped pan");
     clearInterval(tempRef.current);
-    currentAudioDataIndex.value = 0;
+    tempRef.current = null;
+    recordingWindowWidth.value = 0;
     // if (recording) {
     //   console.log('Stopping recording..');
     //   setRecording(undefined);
@@ -139,8 +183,10 @@ export default function MessageBox({style}) {
     // }
     cancelAnimation(recordInitAnimationScale);
     cancelAnimation(recordButtonPressed);
+    cancelAnimation(recordingWindowWidth);
     recordInitAnimationScale.value = 0;
     recordButtonPressed.value = false;
+    recordingWindowWidth.value = 0;
   }, []);
   const onRecordingPanChange = React.useCallback((event) => {
     'worklet';
@@ -160,7 +206,9 @@ export default function MessageBox({style}) {
         </View>
       </GestureDetector>
       <Animated.View style={[styles.recordContainer, recordContainerAnimatedStyle]}>
-        <FontAwesome name="camera" size={20} color="white" style={{opacity : recording ? 0 : 1}} />
+        <Animated.View style={cameraButtonStyle}>
+          <FontAwesome name="camera" size={20} color="white" style={{opacity : recording ? 0 : 1}} />
+        </Animated.View>
         <Animated.View style={[styles.trashIcon, trashAnimatedStyle]}>
           <FontAwesome name="trash" size={20} color="gray" />
         </Animated.View>
@@ -175,13 +223,18 @@ export default function MessageBox({style}) {
           <FontAwesome name="unlock-alt" size={20} color="grey" />
         </Animated.View>
       </Animated.View>
-      <Animated.View style={realtimeRecordContainerStyle}>
-      {
-        animatedViewArray.map((_, i) => (
-          <AnimatedBar ref={animatedDataRef} key={i}/>
-        ))
-      }
+      <Animated.View style={recordingBarsWindowStyle}>
+        <Animated.View style={recordingBarsContainerStyle}>
+          {
+            [...Array(maxBars + 2)].map((_, i) => (
+              <AnimatedBar ref={recordingBarAnimatedArray} key={i}/>
+            ))
+          }
+        </Animated.View>
       </Animated.View>
+      {
+        maxBars !== 0 && <RecordingBarsAnimationController barsArrayRef={recordingBarAnimatedArray} paddingLeft={recordingBarsContainerPaddingLeft} /> 
+      }
     </GestureHandlerRootView >
   );
 }

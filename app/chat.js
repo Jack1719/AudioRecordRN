@@ -4,6 +4,7 @@ import MessageBox from '../components/MessageBox';
 import { FlashList } from "@shopify/flash-list";
 import { Button } from 'react-native';
 import { router } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 
 const DATA = [
   {
@@ -26,6 +27,7 @@ export default function App() {
         />
       </View>
       <MessageBox style={styles.messageBox} />
+      <StatusBar style="dark" />
     </View>
   );
 }
