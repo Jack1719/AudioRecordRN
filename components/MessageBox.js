@@ -3,7 +3,19 @@ import * as React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Audio } from 'expo-av';
 import { FontAwesome } from '@expo/vector-icons';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, cancelAnimation, Easing, useDerivedValue, useAnimatedReaction, runOnUI, runOnJS } from 'react-native-reanimated';
+import Animated, { 
+  useAnimatedStyle, 
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+  cancelAnimation,
+  Easing,
+  useDerivedValue,
+  useAnimatedReaction,
+  runOnUI,
+  runOnJS 
+} from 'react-native-reanimated';
 import {
   Gesture,
   GestureDetector,
@@ -56,11 +68,34 @@ export default function MessageBox({style}) {
   const recordingTotalWidth = useSharedValue(0);
   const recordButtonPressed = useSharedValue(false);
   const recordPanX = useSharedValue(0);
-  const trashAnimatedStyle = useAnimatedStyle(() => ({transform: [{ scale: recordInitAnimationScale.value }]}));
+  const trashStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: recordInitAnimationScale.value }],
+    position: 'absolute',
+    left: 5,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    borderRadius: 20
+  }));
   const [containerWidth, setContainerWidth] = React.useState(0);
-  const recordContainerAnimatedStyle = useAnimatedStyle(() => ({borderRadius: 20 + recordInitAnimationScale.value * 5 , height: 40 + recordInitAnimationScale.value * 10, left: 5 - recordInitAnimationScale.value * 5, width : 40 + (containerWidth - 40) * recordInitAnimationScale.value}), [containerWidth])
+  const trashAnimationScale = useSharedValue(0);
+  const recordContainerStyle = useAnimatedStyle(() => ({
+    borderRadius: 20 + recordInitAnimationScale.value * 5 ,
+    height: 40 + recordInitAnimationScale.value * 10,
+    left: 5 - recordInitAnimationScale.value * 5,
+    width : 40 + (containerWidth - 40) * recordInitAnimationScale.value,
+    backgroundColor: 'blue',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    flexDirection: 'row',
+    overflow: 'visible',
+    transform: [{ scale: trashAnimationScale.value }]
+  }), [containerWidth])
   const tempRef = React.useRef(null);
-  const cameraButtonStyle = useAnimatedStyle(() => ({opacity: recordButtonPressed.value ? 0 : 1}));
+  const cameraButtonStyle = useAnimatedStyle(() => ({opacity: recordButtonPressed.value ? 0 : 1, marginLeft: 9}));
   const recordingBarsContainerPaddingLeft = useSharedValue(0);
   const recordingBarsContainerStyle = useAnimatedStyle(() => ({
     flexDirection: 'row',
@@ -120,7 +155,7 @@ export default function MessageBox({style}) {
   }))
   const containerLayoutCallback = React.useCallback((e) => {
     setContainerWidth(e.nativeEvent.layout.width);
-    const maxBars = Math.floor((e.nativeEvent.layout.width - 55) / (PIXEL_PER_BAR   ));
+    const maxBars = Math.floor((e.nativeEvent.layout.width - 70) / (PIXEL_PER_BAR));
     setMaxBars(maxBars);
   }, []);
   const onRecordingStatusUpdate = React.useCallback((status) => { 
@@ -190,7 +225,16 @@ export default function MessageBox({style}) {
   const onRecordingPanChange = React.useCallback((event) => {
     'worklet';
     recordPanX.value = event.absoluteX;
+    console.log(recordPanX.value)
   }, []);
+  const swipeTextStyle = useAnimatedStyle(() => ({
+    color: 'gray',
+    display: recordPanX.value > 200 ? 'flex' : 'none'
+  }));
+  const cancelTextStyle = useAnimatedStyle(() => ({
+    color: 'gray',
+    display: recordPanX.value > 200 ? 'none' : 'flex'
+  }));
   const recordPan = Gesture.Pan()
     .runOnJS(true)
     .onBegin(startRecordingCallback)
@@ -205,22 +249,22 @@ export default function MessageBox({style}) {
             <FontAwesome name="microphone" size={24} color="black" />
           </View>
         </GestureDetector>
-        <Animated.View style={[styles.recordContainer, recordContainerAnimatedStyle]}>
-          <Animated.View style={cameraButtonStyle}>
-            <FontAwesome name="camera" size={20} color="white" style={{opacity : recording ? 0 : 1}} />
-          </Animated.View>
-          <Animated.View style={[styles.trashIcon, trashAnimatedStyle]}>
-            <FontAwesome name="trash" size={20} color="gray" />
+        <Animated.View style={recordContainerStyle}>
+          <Animated.View style={recordingBarsWindowStyle}>
+            <Animated.View style={recordingBarsContainerStyle}>
+              {
+                [...Array(maxBars + 2)].map((_, i) => (
+                  <AnimatedBar ref={recordingBarAnimatedArray} key={i}/>
+                ))
+              }
+            </Animated.View>
           </Animated.View>
         </Animated.View>
-        <Animated.View style={recordingBarsWindowStyle}>
-          <Animated.View style={recordingBarsContainerStyle}>
-            {
-              [...Array(maxBars + 2)].map((_, i) => (
-                <AnimatedBar ref={recordingBarAnimatedArray} key={i}/>
-              ))
-            }
-          </Animated.View>
+        <Animated.View style={cameraButtonStyle}>
+          <FontAwesome name="camera" size={20} color="white" style={{opacity : recording ? 0 : 1}} />
+        </Animated.View>
+        <Animated.View style={trashStyle}>
+          <FontAwesome name="trash" size={20} color="gray" />
         </Animated.View>
         {
           maxBars !== 0 && <RecordingBarsAnimationController barsArrayRef={recordingBarAnimatedArray} paddingLeft={recordingBarsContainerPaddingLeft} /> 
@@ -229,7 +273,12 @@ export default function MessageBox({style}) {
 
       <View style={styles.swipeTextContainer}>
         <Animated.View style={swipeTextAnimatedStyle}>
-          <Text style={styles.swipeText}>Swipe left to cancel or release to send</Text>
+          <Animated.Text style={swipeTextStyle}>
+            Swipe left to cancel or release to send
+          </Animated.Text>          
+          <Animated.Text style={cancelTextStyle}>
+            Release to Cancel
+          </Animated.Text>
         </Animated.View>
       </View>
       <Animated.View style={recordLockContainerStyle}>
@@ -258,14 +307,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  recordContainer: {
-    backgroundColor: 'blue',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
-    flexDirection: 'row',
-    overflow: 'visible'
-  },
   recordButton: {
     width: 40,
     height: 40,
@@ -273,16 +314,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'absolute',
     right: 5
-  },
-  trashIcon: {
-    position: 'absolute',
-    left: 5,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
-    borderRadius: 20
   },
   swipeText: {
     color: 'gray'
